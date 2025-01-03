@@ -1,7 +1,14 @@
-'use client'
+'use client';
 
-// 省略其他 import 语句...
-import { Style } from './style'
+// 导入依赖
+import { useRef, useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import { Transition } from '@headlessui/react';
+import { useGlobal } from '../context/global'; // 假设 useGlobal 是从 context 文件中导入
+import { HomeBackgroundImage, Header, Footer, AlgoliaSearchModal, JumpToTopButton } from './components';
+import { siteConfig, loadWowJS } from './utils';
+import { Style } from './style';
+import { ThemeGlobalMovie } from '../context/themeGlobalMovie';
 
 // 按钮组和播放器模块
 const PlayerWithControls = () => {
@@ -12,7 +19,6 @@ const PlayerWithControls = () => {
         <button>暂停</button>
         <button>重播</button>
       </div>
-
       <div className="player">
         <div className="title">播放器标题</div>
         <div className="description">这是播放器的描述内容。</div>
@@ -23,6 +29,7 @@ const PlayerWithControls = () => {
 
 /**
  * 基础布局框架
+ * @param {object} props
  * @returns {JSX.Element}
  */
 const LayoutBase = (props) => {
@@ -37,12 +44,11 @@ const LayoutBase = (props) => {
     loadWowJS();
   }, []);
 
-  // 首页背景图
-  const headerSlot =
-    router.route === '/' &&
-    siteConfig('MOVIE_HOME_BACKGROUND', null, CONFIG) ? (
-      <HomeBackgroundImage />
-    ) : null;
+  // 首页背景图逻辑
+  const isHomePage = router?.route === '/';
+  const homeBackground = isHomePage
+    ? siteConfig('MOVIE_HOME_BACKGROUND', null)
+    : null;
 
   return (
     <ThemeGlobalMovie.Provider
@@ -54,19 +60,17 @@ const LayoutBase = (props) => {
 
         {/* 页头 */}
         <Header {...props} />
-        {headerSlot}
+        {homeBackground && <HomeBackgroundImage />}
 
         {/* 主体 */}
         <div id="container-inner" className="w-full relative flex-grow z-10">
           <div
             id="container-wrapper"
-            className={
-              (JSON.parse(siteConfig('LAYOUT_SIDEBAR_REVERSE'))
-                ? 'flex-row-reverse'
-                : '') + 'relative mx-auto justify-center md:flex items-start'
-            }>
+            className={`relative mx-auto justify-center md:flex items-start ${
+              JSON.parse(siteConfig('LAYOUT_SIDEBAR_REVERSE')) ? 'flex-row-reverse' : ''
+            }`}>
             {/* 按钮组和播放器 */}
-            <div className={`w-full ${fullWidth ? '' : ''} px-6`}>
+            <div className={`w-full px-6 ${fullWidth ? 'max-w-full' : 'max-w-screen-lg'}`}>
               <Transition
                 show={!onLoading}
                 appear={true}
