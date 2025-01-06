@@ -251,6 +251,7 @@ const LayoutSlug = props => {
               item.querySelectorAll('video')?.forEach(video => {
                 video.pause()
               })
+              // 外链通过设置src来实现视频暂停播放
               if (iframe) {
                 iframe.setAttribute('src', '')
               }
@@ -260,29 +261,235 @@ const LayoutSlug = props => {
         figCaptionWrapper.appendChild(div)
       })
 
-      // 将分集按钮文本容器和走马灯容器合并添加到 videoWrapper 中
-      videoWrapper.appendChild(figCaptionWrapper)
-      videoWrapper.appendChild(carouselWrapper)
-
-      // 将视频区块容器添加到页面中
-      notionArticle.appendChild(videoWrapper)
+      if (carouselWrapper.children.length > 0) {
+        // 将包含 figcaption 值的容器元素添加到 notion-article 的第一个子元素插入
+        videoWrapper.appendChild(carouselWrapper)
+        // 显示分集按钮 大于1集才显示 ；或者用户 要求强制显示
+        if (
+          figCaptionWrapper.children.length > 1 ||
+          siteConfig('MOVIE_VIDEO_COMBINE_SHOW_PAGE_FORCE', false, CONFIG)
+        ) {
+          videoWrapper.appendChild(figCaptionWrapper)
+        }
+        // 放入页面
+        if (
+          notionArticle.firstChild &&
+          notionArticle.contains(notionArticle.firstChild)
+        ) {
+          notionArticle.insertBefore(videoWrapper, notionArticle.firstChild)
+        } else {
+          notionArticle.appendChild(videoWrapper)
+        }
+      }
     }
 
-    if (typeof window !== 'undefined') {
-      // 等待0.6秒，避免页面被打开时初始化过快导致内容出错
-      setTimeout(() => {
-        combineVideo()
-      }, 600)
+    setTimeout(() => {
+      combineVideo()
+    }, 1500)
+
+    // 404
+    if (!post) {
+      setTimeout(
+        () => {
+          if (isBrowser) {
+            const article = document.querySelector('#article-wrapper #notion-article')
+            if (!article) {
+              router.push('/404').then(() => {
+                console.warn('找不到页面', router.asPath)
+              })
+            }
+          }
+        },
+        waiting404
+      )
     }
-  }, [router])
+    return () => {
+      // 获取所有 class="video-wrapper" 的元素
+      const videoWrappers = document.querySelectorAll('.video-wrapper')
+
+      // 遍历所有匹配的元素并移除它们
+      videoWrappers.forEach(wrapper => {
+        wrapper.parentNode.removeChild(wrapper) // 从 DOM 中移除元素
+      })
+    }
+  }, [post])
 
   return (
     <>
-      <LayoutBase {...props} slotTop={<ArticleInfo {...props} />}>
-        <ArticleLock {...props} />
-      </LayoutBase>
+      {!lock ? post && (
+        <div
+          id='article-wrapper'
+          className='px-2 max-w-5xl 2xl:max-w-[70%] mx-auto'>
+          {/* 标题 */}
+          <ArticleInfo post={post} />
+          {/* 页面元素 */}
+          <NotionPage post={post} />
+          {/* 推荐 */}
+          <BlogRecommend {...props} />
+          {/* 分享栏目 */}
+          <ShareBar post={post} />
+          {/* 评论区 */}
+          <Comment frontMatter={post} />
+        </div>
+      ) : (
+        <ArticleLock validPassword={validPassword} />
+      )}
     </>
   )
 }
 
-export { LayoutBase, LayoutIndex, LayoutPostList, LayoutSlug }
+/**
+ * 404页
+ * @param {*} props
+ * @returns
+ */
+const Layout404 = props => {
+  const { locale } = useGlobal()
+  const { searchModal } = useMovieGlobal()
+  const router = useRouter()
+  // 展示搜索框
+  const toggleShowSearchInput = () => {
+    if (siteConfig('ALGOLIA_APP_ID')) {
+      searchModal.current.openSearch()
+    }
+  }
+
+  const onKeyUp = e => {
+    if (e.keyCode === 13) {
+      const search = document.getElementById('search').value
+      if (search) {
+        router.push({ pathname: '/search/' + search })
+      }
+    }
+  }
+
+  return (
+    <>
+      <div className='h-52'>
+        <h2 className='text-4xl'>{locale.COMMON.NO_RESULTS_FOUND}</h2>
+        <hr className='my-4' />
+        <div className='max-w-md relative'>
+          <input
+            autoFocus
+            id='search'
+            onClick={toggleShowSearchInput}
+            onKeyUp={onKeyUp}
+            className='float-left w-full outline-none h-full p-2 rounded dark:bg-[#383838] bg-gray-100'
+            aria-label='Submit search'
+            type='search'
+            name='s'
+            autoComplete='off'
+            placeholder='Type then hit enter to search...'
+          />
+          <i className='fas fa-search absolute right-0 my-auto p-2'></i>
+        </div>
+      </div>
+      {/* 底部导航 */}
+      <div className='h-full flex-grow grid grid-cols-4 gap-4'>
+        <LatestPostsGroup {...props} />
+        <CategoryGroup {...props} />
+        <ArchiveDateList {...props} />
+        <TagGroups {...props} />
+      </div>
+    </>
+  )
+}
+
+/**
+ * 搜索页
+ * @param {*} props
+ * @returns
+ */
+const LayoutSearch = props => {
+  const { keyword } = props
+  const router = useRouter()
+  useEffect(() => {
+    if (isBrowser) {
+      // 高亮搜索到的结果
+      const container = document.getElementById('posts-wrapper')
+      if (keyword && container) {
+        replaceSearchResult({
+          doms: container,
+          search: keyword,
+          target: {
+            element: 'span',
+            className: 'text-red-500 border-b border-dashed'
+          }
+        })
+      }
+    }
+  }, [router])
+
+  return <LayoutPostList {...props} />
+}
+
+/**
+ * 归档列表
+ * @param {*} props
+ * @returns 按照日期将文章分组排序
+ */
+const LayoutArchive = props => {
+  const { archivePosts } = props
+  return (
+    <>
+      <div className='mb-10 pb-20 md:py-12 p-3  min-h-screen w-full'>
+        {Object.keys(archivePosts).map(archiveTitle => (
+          <BlogListGroupByDate
+            key={archiveTitle}
+            archiveTitle={archiveTitle}
+            archivePosts={archivePosts}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/**
+ * 分类列表
+ * @param {*} props
+ * @returns
+ */
+const LayoutCategoryIndex = props => {
+  const { categoryOptions } = props
+  return (
+    <>
+      <div id='category-list' className='duration-200 flex flex-wrap'>
+        {categoryOptions?.map(category => (
+          <CategoryItem key={category.name} category={category} />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/**
+ * 标签列表
+ * @param {*} props
+ * @returns
+ */
+const LayoutTagIndex = props => {
+  const { tagOptions } = props
+  return (
+    <>
+      <div id='tags-list' className='duration-200 flex flex-wrap'>
+        {tagOptions.map(tag => (
+          <TagItem key={tag.name} tag={tag} />
+        ))}
+      </div>
+    </>
+  )
+}
+
+export {
+  Layout404,
+  LayoutArchive,
+  LayoutBase,
+  LayoutCategoryIndex,
+  LayoutIndex,
+  LayoutPostList,
+  LayoutSearch,
+  LayoutSlug,
+  LayoutTagIndex,
+  CONFIG as THEME_CONFIG
+}
